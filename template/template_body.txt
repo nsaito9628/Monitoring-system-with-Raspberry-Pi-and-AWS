@@ -1,0 +1,164 @@
+  OriginS3Bucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties: 
+      BucketName: !Sub ${OrgBucketName}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: True
+        BlockPublicPolicy: True
+        IgnorePublicAcls: True
+        RestrictPublicBuckets: True
+  OriginS3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref OriginS3Bucket
+      PolicyDocument:
+        Statement:
+          - Action: s3:GetObject
+            Effect: Allow
+            Resource: !Sub arn:aws:s3:::${OriginS3Bucket}/*
+            Principal:
+              AWS: !Sub arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity ${CloudFrontOriginAccessIdentity}
+  LambdaFunction:
+    Type: AWS::Serverless::Function 
+    Properties:
+      CodeUri: function/
+      FunctionName: !Sub ${ProjectName}Func
+      Handler: app.lambda_handler
+      Environment: 
+        Variables: 
+          ORG_BACKET: !Sub ${OrgBucketName}
+      Events:
+        S3Event:
+          Type: S3
+          Properties:
+            Bucket: !Ref OriginS3Bucket 
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                - Name: prefix
+                  Value: !Sub ${EventPrefix} 
+      Role: !GetAtt LambdaFunctionRole.Arn
+      Tags:
+        Name: !Sub ${NameTag}
+  LambdaFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${LambdaFunction}
+      RetentionInDays: 7
+  LambdaFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Action: "sts:AssumeRole"
+            Principal:
+              Service: lambda.amazonaws.com
+      Policies:
+        - PolicyName: !Sub ${ProjectName}FuncPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: 
+                  - "arn:aws:logs:*:*:*"
+              - Effect: "Allow"
+                Action:
+                  - "s3:GetObject"
+                  - "s3:PutObject"
+                  - "s3:DeleteObject"
+                Resource: 
+                  - !Sub "arn:aws:s3:::*"
+# IAM role for IoT Rule to CloudWatch Dashboard
+  IoTRuleActionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "iot.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      RoleName: !Sub ${ProjectName}IoTRuleActionRole
+      Policies:
+        - PolicyName: !Sub ${ProjectName}CustomMetricsPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action: "cloudwatch:PutMetricData"
+                Resource: "*"
+# IoT rules for Place
+  IoTRule:
+    Type: AWS::IoT::TopicRule
+    Properties:
+      RuleName:  !Join ["", [!Select ["%d", !Split [",", !Sub ",${Place}"]], "IoTRule"]]
+      TopicRulePayload:
+        Actions:
+          - CloudwatchMetric:
+              MetricName: detect_count
+              MetricNamespace: !Join ["", [!Select ["%d", !Split [",", !Sub ",${Place}"]], "/count"]]
+              MetricUnit: None
+              MetricValue: ${detect_count}
+              RoleArn: !GetAtt IoTRuleActionRole.Arn
+        AwsIotSqlVersion: "2016-03-23"
+        Description: String
+        RuleDisabled: false
+        Sql: !Join ["", ["SELECT * FROM '", !Select ["%d", !Split [",", !Sub ",${Place}"]], "/count'"]]
+      Tags:
+        - Key: Name
+          Value: !Sub ${NameTag}
+    Count: !Ref NumPlace
+
+#CloudFront Distribution for SPA page to view your event records
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        HttpVersion: http2
+        #WebACLId: !Sub arn:aws:wafv2:us-east-1:${AWS::AccountId}:global/webacl/WAF_NAME/id
+        Origins:
+        - Id: S3Origin
+          DomainName: !Sub "${OriginS3Bucket}.s3.${AWS::Region}.amazonaws.com"
+          S3OriginConfig:
+            OriginAccessIdentity: !Sub origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity}
+        DefaultRootObject: index.html
+        Comment: !Sub ${AWS::StackName} distribution
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ForwardedValues:
+            QueryString: false
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+            #- "OPTIONS"
+            #- "PUT"
+            #- "PATCH"
+            #- "POST"
+            #- "DELETE"
+          DefaultTTL: 0
+          MaxTTL: 0
+          MinTTL: 0
+        IPV6Enabled: false
+  CloudFrontOriginAccessIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Ref AWS::StackName
+
+#CloudFront domain for SPA
+Outputs:
+  DomainName:
+    Value: !GetAtt CloudFrontDistribution.DomainName

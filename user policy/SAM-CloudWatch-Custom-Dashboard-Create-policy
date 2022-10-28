@@ -1,0 +1,37 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "cloudwatch:PutMetricStream",
+                "cloudwatch:PutMetricAlarm",
+                "cloudwatch:PutDashboard",
+                "cloudwatch:DeleteDashboards",
+                "cloudwatch:GetDashboard",
+                "cloudwatch:StopMetricStreams",
+                "cloudwatch:DeleteMetricStream",
+                "cloudwatch:GetMetricStream",
+                "cloudwatch:StartMetricStreams"
+            ],
+            "Resource": [
+                "arn:aws:cloudwatch:*:accountID:metric-stream/*",
+                "arn:aws:cloudwatch:*:accountID:alarm:*",
+                "arn:aws:cloudwatch::accountID:dashboard/*"
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "cloudwatch:PutMetricData",
+                "cloudwatch:GetMetricData",
+                "cloudwatch:ListMetricStreams",
+                "cloudwatch:ListDashboards",
+                "cloudwatch:GetMetricStatistics",
+                "cloudwatch:GetMetricWidgetImage",
+                "cloudwatch:ListMetrics"
+            ],
+            "Resource": "*"
+        }
+    ]
+}

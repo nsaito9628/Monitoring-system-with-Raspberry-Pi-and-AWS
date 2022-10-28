@@ -1,0 +1,83 @@
+@startuml AWS_IoT_mqtts
+
+participant main.py
+participant parameters.py
+participant sensing.py
+participant counter.py
+participant awsMQTTconnect.py
+participant Sensor
+participant AWSIoTendpoint
+
+main.py -> sensing.py:
+activate main.py
+sensing.py -> parameters.py:
+activate parameters.py
+activate sensing.py
+sensing.py <- parameters.py:初期化
+deactivate parameters.py
+sensing.py -> Sensor
+activate Sensor
+sensing.py <- Sensor:初期化
+deactivate Sensor
+main.py <- sensing.py:
+deactivate sensing.py
+
+main.py -> counter.py:
+activate counter.py
+counter.py -> parameters.py:
+activate parameters.py
+counter.py <- parameters.py:初期化
+deactivate parameters.py
+main.py <- counter.py:
+deactivate counter.py
+
+main.py -> awsMQTTconnect.py:
+activate awsMQTTconnect.py
+awsMQTTconnect.py -> parameters.py:
+activate parameters.py
+awsMQTTconnect.py <- parameters.py:初期化
+deactivate parameters.py
+main.py <- awsMQTTconnect.py:
+deactivate awsMQTTconnect.py
+
+main.py -> awsMQTTconnect.py: get_ssid()
+activate awsMQTTconnect.py
+main.py <- awsMQTTconnect.py:
+deactivate awsMQTTconnect.py
+
+main.py -> awsMQTTconnect.py: aws_connect()
+activate awsMQTTconnect.py
+main.py <- awsMQTTconnect.py:
+deactivate awsMQTTconnect.py
+
+loop while True 
+    main.py -> sensing.py: sensor.detect_counter()
+    activate sensing.py
+    sensing.py -> Sensor
+    activate Sensor
+    sensing.py <- Sensor: GPIO.input()
+    deactivate Sensor
+    main.py <- sensing.py: sig_detect
+    deactivate sensing.py
+
+    main.py -> counter.py: motion_count(sig_detect, detect_count)
+    activate counter.py
+    main.py <- counter.py: detect_count
+    deactivate counter.py
+
+    main.py -> awsMQTTconnect.py: publish_motion_count(sub_t_count, detect_count)
+    activate awsMQTTconnect.py 
+    awsMQTTconnect.py -> AWSIoTendpoint: サーバー証明書確認
+    activate AWSIoTendpoint
+    awsMQTTconnect.py <- AWSIoTendpoint: クライアント証明書確認
+    awsMQTTconnect.py -> AWSIoTendpoint: publish
+    deactivate AWSIoTendpoint
+    main.py <- awsMQTTconnect.py: bool, sub_t_count
+    deactivate awsMQTTconnect.py
+
+        alt bool == True: detect_count = 0
+        end
+end
+activate main.py
+
+@enduml

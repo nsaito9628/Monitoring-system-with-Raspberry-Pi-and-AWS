@@ -1,0 +1,51 @@
+@startuml upload_S3
+
+participant RaspberryPi
+participant S3Bucket
+box "S3Bucket/PlaceNo"
+participant old_filename
+participant new_filename
+end box
+participant CloudFront
+Actor Viewer 
+
+activate RaspberryPi
+RaspberryPi -> S3Bucket: upload mp4 file
+deactivate RaspberryPi
+activate S3Bucket
+S3Bucket -> old_filename: Trigger to Lambda excution
+
+old_filename -> new_filename:11.mp4->12.mp4
+old_filename -> new_filename:10.mp4->11.mp4
+old_filename -> new_filename:09.mp4->10.mp4
+old_filename -> new_filename:08.mp4->09.mp4
+old_filename -> new_filename:07.mp4->08.mp4
+old_filename -> new_filename:06.mp4->07.mp4
+old_filename -> new_filename:05.mp4->06.mp4
+old_filename -> new_filename:04.mp4->05.mp4
+old_filename -> new_filename:03.mp4->04.mp4
+old_filename -> new_filename:02.mp4->03.mp4
+old_filename -> new_filename:01.mp4->02.mp4
+
+S3Bucket -> old_filename: copy mp4 file uploaded
+old_filename -> new_filename:mp4 file uploaded->01.mp4
+deactivate S3Bucket
+
+
+CloudFront <- Viewer:domain name
+activate Viewer
+activate CloudFront
+S3Bucket <- CloudFront:index.html
+deactivate CloudFront
+activate S3Bucket
+S3Bucket -> new_filename
+deactivate S3Bucket
+activate new_filename
+new_filename -> CloudFront:mp4 file
+deactivate new_filename
+activate CloudFront
+CloudFront -> Viewer
+deactivate CloudFront
+deactivate Viewer
+
+@enduml
