@@ -1,0 +1,41 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "VisualEditor0",
+            "Effect": "Allow",
+            "Action": [
+                "lambda:ListFunctions",
+                "apigateway:*",
+                "lambda:ListLayers",
+                "lambda:GetAccountSettings"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "VisualEditor1",
+            "Effect": "Allow",
+            "Action": [
+                "lambda:CreateFunction",
+                "lambda:UpdateFunctionEventInvokeConfig",
+                "lambda:TagResource",
+                "lambda:InvokeFunction",
+                "lambda:GetFunction",
+                "lambda:UpdateFunctionConfiguration",
+                "lambda:UpdateFunctionCode",
+                "lambda:AddPermission",
+                "lambda:GetFunctionEventInvokeConfig",
+                "lambda:PutFunctionEventInvokeConfig",
+                "lambda:DeleteFunctionEventInvokeConfig",
+                "lambda:DeleteFunction",
+                "lambda:PublishVersion",
+                "lambda:RemovePermission",
+                "lambda:GetPolicy"
+            ],
+            "Resource": [
+                "arn:aws:lambda:*:accountID:function:*",
+                "arn:aws:lambda:*:accountID:layer:*:*"
+            ]
+        }
+    ]
+}

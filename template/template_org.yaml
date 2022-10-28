@@ -1,0 +1,570 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  SAM Template for Watch-Over-Dashboard-and-Cam deployment
+
+Globals:
+  Function:
+    Runtime: python3.9
+    Timeout: 15
+    MemorySize: 128
+    Architectures:
+      - arm64
+
+####################################
+Parameters:
+############Customizable############
+  ProjectName:
+    Type: String
+    Default: NewWatchOverLiving #E.g., your room name to watch over such as MyLiving 
+  Place1:
+    Type: String
+    Default: Place1 #First place sat cam, is same as THING_NAME of src1 directory
+  Place2:
+    Type: String
+    Default: Place2 #Second place sat cam, is same as THING_NAME of src2 directory
+  Place3:
+    Type: String
+    Default: Place3 #Third place sat cam, is same as THING_NAME of src3 directory
+  Place4:
+    Type: String
+    Default: Place4 #Fourth place sat cam, is same as THING_NAME of src4 directory
+  OrgBucketName:
+    Type: String
+    Default: your-mimamori-bucket-name #New S3 bucket name to upload mp4 files
+  NameTag:
+    Type: String
+    Default: NewWatchOverLiving #E.g., your room name to watch over such as MyLiving
+############# Fixed #############
+  EventPrefix:
+    Type: String
+    Default: 'emr'
+#################################
+
+####################################
+Conditions:
+####################################
+  Test: !Not [!Equals [!Ref Place1, '']]
+
+  OnePlace: !And
+  - !Not [!Equals [!Ref Place1, '']]
+  - !Equals [!Ref Place2, '']
+  - !Equals [!Ref Place3, '']
+  - !Equals [!Ref Place4, '']
+  TwoPlaces: !And
+  - !Not [!Equals [!Ref Place2, '']]
+  - !Equals [!Ref Place3, '']
+  - !Equals [!Ref Place4, '']
+  ThreePlaces: !And
+  - !Not [!Equals [!Ref Place3, '']]
+  - !Equals [!Ref Place4, '']
+  FourPlaces: !Not [!Equals [!Ref Place4, '']]
+
+  RuleOne: !Or
+  - !Not [!Equals [!Ref Place1, '']]
+  - !Not [!Equals [!Ref Place2, '']]
+  - !Not [!Equals [!Ref Place3, '']]
+  - !Not [!Equals [!Ref Place4, '']]
+  RuleTwo: !Or
+  - !Not [!Equals [!Ref Place2, '']]
+  - !Not [!Equals [!Ref Place3, '']]
+  - !Not [!Equals [!Ref Place4, '']]
+  RuleThree: !Or
+  - !Not [!Equals [!Ref Place3, '']]
+  - !Not [!Equals [!Ref Place4, '']]
+  RuleFour: !Not [!Equals [!Ref Place4, '']]
+
+####################################
+Resources:
+####################################
+  OriginS3Bucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties: 
+      BucketName: !Sub ${OrgBucketName}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: True
+        BlockPublicPolicy: True
+        IgnorePublicAcls: True
+        RestrictPublicBuckets: True
+  OriginS3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref OriginS3Bucket
+      PolicyDocument:
+        Statement:
+          - Action: s3:GetObject
+            Effect: Allow
+            Resource: !Sub arn:aws:s3:::${OriginS3Bucket}/*
+            Principal:
+              AWS: !Sub arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity ${CloudFrontOriginAccessIdentity}
+  LambdaFunction:
+    Type: AWS::Serverless::Function 
+    Properties:
+      CodeUri: function/
+      FunctionName: !Sub ${ProjectName}Func
+      Handler: app.lambda_handler
+      Environment: 
+        Variables: 
+#          PLACE1: !If [RuleOne, !Sub "${Place1}", !Ref AWS::NoValue]
+#          PLACE2: !If [RuleTwo, !Sub "${Place2}", !Ref AWS::NoValue]
+#          PLACE3: !If [RuleThree, !Sub "${Place3}", !Ref AWS::NoValue]
+#          PLACE4: !If [RuleFour, !Sub "${Place4}", !Ref AWS::NoValue]
+          ORG_BACKET: !Sub ${OrgBucketName}
+      Events:
+        S3Event:
+          Type: S3
+          Properties:
+            Bucket: !Ref OriginS3Bucket 
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                - Name: prefix
+                  Value: !Sub ${EventPrefix} 
+      Role: !GetAtt LambdaFunctionRole.Arn
+      Tags:
+        Name: !Sub ${NameTag}
+  LambdaFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${LambdaFunction}
+      RetentionInDays: 7
+  LambdaFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Action: "sts:AssumeRole"
+            Principal:
+              Service: lambda.amazonaws.com
+      Policies:
+        - PolicyName: !Sub ${ProjectName}FuncPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: 
+                  - "arn:aws:logs:*:*:*"
+              - Effect: "Allow"
+                Action:
+                  - "s3:GetObject"
+                  - "s3:PutObject"
+                  - "s3:DeleteObject"
+                Resource: 
+                  - !Sub "arn:aws:s3:::*"
+# IAM role for IoT Rule to CloudWatch Dashboard
+  IoTRuleActionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "iot.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      RoleName: !Sub ${ProjectName}IoTRuleActionRole
+      Policies:
+        - PolicyName: !Sub ${ProjectName}CustomMetricsPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action: "cloudwatch:PutMetricData"
+                Resource: "*"
+# IoT rules for Place1
+  IoTRule1:
+    Condition: RuleOne
+    Type: AWS::IoT::TopicRule
+    Properties:
+      RuleName: !Sub ${Place1}IoTRule
+      TopicRulePayload:
+        Actions:
+          - CloudwatchMetric:
+              MetricName: detect_count
+              MetricNamespace: !Sub ${Place1}/count
+              MetricUnit: None
+              MetricValue: ${detect_count}
+              RoleArn: !GetAtt IoTRuleActionRole.Arn
+        AwsIotSqlVersion: "2016-03-23"
+        Description: String
+        RuleDisabled: false
+        Sql: !Sub
+          "SELECT * FROM '${Place1}/count'"
+      Tags:
+        - Key: Name
+          Value: !Sub ${NameTag}
+# IoT rules for Place2
+  IoTRule2:
+    Condition: RuleTwo
+    Type: AWS::IoT::TopicRule
+    Properties:
+      RuleName: !Sub ${Place2}IoTRule
+      TopicRulePayload:
+        Actions:
+          - CloudwatchMetric:
+              MetricName: !Sub detect_count
+              MetricNamespace: !Sub ${Place2}/count
+              MetricUnit: None
+              MetricValue: ${detect_count}
+              RoleArn: !GetAtt IoTRuleActionRole.Arn
+        AwsIotSqlVersion: "2016-03-23"
+        Description: String
+        RuleDisabled: false
+        Sql: !Sub
+          "SELECT * FROM '${Place2}/count'"
+      Tags:
+        - Key: Name
+          Value: !Sub ${NameTag}
+# IoT rules for Place3
+  IoTRule3:
+    Condition: RuleThree
+    Type: AWS::IoT::TopicRule
+    Properties:
+      RuleName: !Sub ${Place3}IoTRule
+      TopicRulePayload:
+        Actions:
+          - CloudwatchMetric:
+              MetricName: !Sub detect_count
+              MetricNamespace: !Sub ${Place3}/count
+              MetricUnit: None
+              MetricValue: ${detect_count}
+              RoleArn: !GetAtt IoTRuleActionRole.Arn
+        AwsIotSqlVersion: "2016-03-23"
+        Description: String
+        RuleDisabled: false
+        Sql: !Sub
+          "SELECT * FROM '${Place3}/count'"
+      Tags:
+        - Key: Name
+          Value: !Sub ${NameTag}
+# IoT rules for Place14
+  IoTRule4:
+    Condition: RuleFour
+    Type: AWS::IoT::TopicRule
+    Properties:
+      RuleName: !Sub ${Place4}IoTRule
+      TopicRulePayload:
+        Actions:
+          - CloudwatchMetric:
+              MetricName: !Sub detect_count
+              MetricNamespace: !Sub ${Place4}/count
+              MetricUnit: None
+              MetricValue: ${detect_count}
+#              MetricValue: !Join
+#                            - ''
+#                            - - '${'
+#                              - !Sub ${Place4}_count
+#                              - '}'
+              RoleArn: !GetAtt IoTRuleActionRole.Arn
+        AwsIotSqlVersion: "2016-03-23"
+        Description: String
+        RuleDisabled: false
+        Sql: !Sub
+          "SELECT * FROM '${Place4}/count'"
+      Tags:
+        - Key: Name
+          Value: !Sub ${NameTag}
+#CloudWatch Dashboard
+  CloudWatchDashboard1:
+    Condition: OnePlace
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub ${ProjectName}Dashboard
+      DashboardBody: !Sub 
+                  '{
+                      "widgets": [
+                          {
+                              "height": 6,
+                              "width": 12,
+                              "y": 0,
+                              "x": 0,
+                              "type": "metric",
+                              "properties": {
+                                  "metrics": [
+                                      [ 
+                                        "${Place1}/count", 
+                                        "detect_count" 
+                                      ]
+                                  ],
+                                  "view": "timeSeries",
+                                  "stacked": false,
+                                  "region": "ap-northeast-1",
+                                  "title": "${Place1}",
+                                  "period": 60,
+                                  "stat": "Sum"
+                              }
+                          }
+                      ]
+                  }'
+  CloudWatchDashboard2:
+    Condition: TwoPlaces
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub ${ProjectName}Dashboard
+      DashboardBody: !Sub
+                  '{
+                      "widgets": [
+                          {
+                              "height": 6,
+                              "width": 12,
+                              "y": 0,
+                              "x": 0,
+                              "type": "metric",
+                              "properties": {
+                                  "metrics": [
+                                      [ 
+                                        "${Place1}/count", 
+                                        "detect_count" 
+                                      ]
+                                  ],
+                                  "view": "timeSeries",
+                                  "stacked": false,
+                                  "region": "ap-northeast-1",
+                                  "title": "${Place1}",
+                                  "period": 60,
+                                  "stat": "Sum"
+                              }
+                          },
+                          {
+                              "height": 6,
+                              "width": 12,
+                              "y": 0,
+                              "x": 6,
+                              "type": "metric",
+                              "properties": {
+                                  "metrics": [
+                                      [ 
+                                        "${Place2}/count", 
+                                        "detect_count" 
+                                      ]
+                                  ],
+                                  "view": "timeSeries",
+                                  "stacked": false,
+                                  "region": "ap-northeast-1",
+                                  "title": "${Place2}",
+                                  "period": 60,
+                                  "stat": "Sum"
+                              }
+                          }
+                      ]
+                  }'
+  CloudWatchDashboard3:
+    Condition: ThreePlaces
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub ${ProjectName}Dashboard
+      DashboardBody: !Sub 
+                  '{
+                      "widgets": [
+                          {
+                              "height": 6,
+                              "width": 12,
+                              "y": 0,
+                              "x": 0,
+                              "type": "metric",
+                              "properties": {
+                                  "metrics": [
+                                      [ 
+                                        "${Place1}/count", 
+                                        "detect_count" 
+                                      ]
+                                  ],
+                                  "view": "timeSeries",
+                                  "stacked": false,
+                                  "region": "ap-northeast-1",
+                                  "title": "${Place1}",
+                                  "period": 60,
+                                  "stat": "Sum"
+                              }
+                          },
+                          {
+                              "height": 6,
+                              "width": 12,
+                              "y": 0,
+                              "x": 12,
+                              "type": "metric",
+                              "properties": {
+                                  "metrics": [
+                                      [ 
+                                        "${Place2}/count", 
+                                        "detect_count" 
+                                      ]
+                                  ],
+                                  "view": "timeSeries",
+                                  "stacked": false,
+                                  "region": "ap-northeast-1",
+                                  "title": "${Place2}",
+                                  "period": 60,
+                                  "stat": "Sum"
+                              }
+                          },
+                          {
+                              "height": 6,
+                              "width": 12,
+                              "y": 6,
+                              "x": 0,
+                              "type": "metric",
+                              "properties": {
+                                  "metrics": [
+                                      [ 
+                                        "${Place3}/count", 
+                                        "detect_count" 
+                                      ]
+                                  ],
+                                  "view": "timeSeries",
+                                  "stacked": false,
+                                  "region": "ap-northeast-1",
+                                  "title": "${Place3}",
+                                  "period": 60,
+                                  "stat": "Sum"
+                              }
+                          }
+                      ]
+                  }'
+  CloudWatchDashboard4:
+    Condition: FourPlaces
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub ${ProjectName}Dashboard
+      DashboardBody: !Sub |
+                  {
+                      "widgets": [
+                        {
+                              "height": 6,
+                              "width": 12,
+                              "y": 0,
+                              "x": 0,
+                              "type": "metric",
+                              "properties": {
+                                  "metrics": [
+                                      [ 
+                                        "${Place1}/count", 
+                                        "detect_count" 
+                                      ]
+                                  ],
+                                  "view": "timeSeries",
+                                  "stacked": false,
+                                  "region": "ap-northeast-1",
+                                  "title": "${Place1}",
+                                  "period": 60,
+                                  "stat": "Sum"
+                              }
+                          },
+                          {
+                              "height": 6,
+                              "width": 12,
+                              "y": 0,
+                              "x": 12,
+                              "type": "metric",
+                              "properties": {
+                                  "metrics": [
+                                      [ 
+                                        "${Place2}/count", 
+                                        "detect_count" 
+                                      ]
+                                  ],
+                                  "view": "timeSeries",
+                                  "stacked": false,
+                                  "region": "ap-northeast-1",
+                                  "title": "${Place2}",
+                                  "period": 60,
+                                  "stat": "Sum"
+                              }
+                          },
+                          {
+                              "height": 6,
+                              "width": 12,
+                              "y": 6,
+                              "x": 0,
+                              "type": "metric",
+                              "properties": {
+                                  "metrics": [
+                                      [ 
+                                        "${Place3}/count", 
+                                        "detect_count" 
+                                      ]
+                                  ],
+                                  "view": "timeSeries",
+                                  "stacked": false,
+                                  "region": "ap-northeast-1",
+                                  "title": "${Place3}",
+                                  "period": 60,
+                                  "stat": "Sum"
+                              }
+                          },
+                          {
+                              "height": 6,
+                              "width": 12,
+                              "y": 6,
+                              "x": 12,
+                              "type": "metric",
+                              "properties": {
+                                  "metrics": [
+                                      [ 
+                                        "${Place4}/count", 
+                                        "detect_count" 
+                                      ]
+                                  ],
+                                  "view": "timeSeries",
+                                  "stacked": false,
+                                  "region": "ap-northeast-1",
+                                  "title": "${Place4}",
+                                  "period": 60,
+                                  "stat": "Sum"
+                              }
+                          }
+                      ]
+                  }
+
+#CloudFront Distribution for SPA page to view your event records
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        HttpVersion: http2
+        #WebACLId: !Sub arn:aws:wafv2:us-east-1:${AWS::AccountId}:global/webacl/WAF_NAME/id
+        Origins:
+        - Id: S3Origin
+          DomainName: !Sub "${OriginS3Bucket}.s3.${AWS::Region}.amazonaws.com"
+          S3OriginConfig:
+            OriginAccessIdentity: !Sub origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity}
+        DefaultRootObject: index.html
+        Comment: !Sub ${AWS::StackName} distribution
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ForwardedValues:
+            QueryString: false
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+            #- "OPTIONS"
+            #- "PUT"
+            #- "PATCH"
+            #- "POST"
+            #- "DELETE"
+          DefaultTTL: 0
+          MaxTTL: 0
+          MinTTL: 0
+        IPV6Enabled: false
+  CloudFrontOriginAccessIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Ref AWS::StackName
+
+#CloudFront domain for SPA
+Outputs:
+  DomainName:
+    Value: !GetAtt CloudFrontDistribution.DomainName

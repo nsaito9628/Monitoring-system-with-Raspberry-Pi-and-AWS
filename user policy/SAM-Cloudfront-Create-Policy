@@ -1,0 +1,43 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "VisualEditor1",
+            "Effect": "Allow",
+            "Action": [
+                "cloudfront:GetDistribution",
+                "cloudfront:TagResource",
+                "cloudfront:CreateDistributionWithTags",
+                "cloudfront:UpdateDistribution",
+                "cloudfront:CreateDistribution",
+                "cloudfront:DeleteDistribution",
+                "cloudfront:UntagResource"
+            ],
+            "Resource": "arn:aws:cloudfront::accountID:*"
+        },
+        {
+            "Sid": "VisualEditor2",
+            "Effect": "Allow",
+            "Action": [
+                "cloudfront:CreateOriginRequestPolicy",
+                "cloudfront:GetCloudFrontOriginAccessIdentityConfig",
+                "cloudfront:ListCloudFrontOriginAccessIdentities",
+                "cloudfront:ListResponseHeadersPolicies",
+                "cloudfront:DeleteOriginRequestPolicy",
+                "cloudfront:GetResponseHeadersPolicy",
+                "cloudfront:DeleteCloudFrontOriginAccessIdentity",
+                "cloudfront:UpdateOriginRequestPolicy",
+                "cloudfront:DeleteResponseHeadersPolicy",
+                "cloudfront:CreateCloudFrontOriginAccessIdentity",
+                "cloudfront:GetResponseHeadersPolicyConfig",
+                "cloudfront:UpdateResponseHeadersPolicy",
+                "cloudfront:ListDistributions",
+                "cloudfront:GetCloudFrontOriginAccessIdentity",
+                "cloudfront:UpdateCloudFrontOriginAccessIdentity",
+                "cloudfront:ListDistributionsByResponseHeadersPolicyId",
+                "cloudfront:CreateResponseHeadersPolicy"
+            ],
+            "Resource": "*"
+        }
+    ]
+}

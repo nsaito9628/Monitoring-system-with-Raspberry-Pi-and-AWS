@@ -1,0 +1,33 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "VisualEditor3",
+            "Effect": "Allow",
+            "Action": [
+                "cloudformation:GetStackPolicy",
+                "cloudformation:DescribeStackEvents",
+                "cloudformation:DeleteStack",
+                "cloudformation:DescribeStackResources",
+                "cloudformation:GetTemplateSummary",
+                "cloudformation:GetTemplate",
+                "cloudformation:DescribeStacks"
+            ],
+            "Resource": "arn:aws:cloudformation:ap-northeast-1:accountID:stack/*"
+        },
+        {
+            "Sid": "VisualEditor2",
+            "Effect": "Allow",
+            "Action": [
+                "cloudformation:ListStacks",
+                "cloudformation:ListTypes",
+                "cloudformation:ListResources",
+                "cloudformation:ListStackResources",
+                "cloudformation:CreateChangeSet",
+                "cloudformation:ExecuteChangeSet",
+                "cloudformation:DescribeChangeSet"
+            ],
+            "Resource": "*"
+        }
+    ]
+}

@@ -1,0 +1,117 @@
+@startuml Upload S3
+
+
+
+participant emr_rec.main
+participant emr_rec.exec
+participant emr_rec.set_loop
+participant emr_rec.video_writer_diff
+participant emr_rec.video_writer_sensor
+participant sensing.detect_counter
+
+participant Cam
+participant Sensor
+
+participant emr_gen.combine_file
+participant emr_gen.chenge_codec
+participant emr_gen.upload_awsS3
+participant parameters.py
+participant S3
+
+== 初期化 ==
+note right of emr_rec.main
+emr_rec.py初期化時に
+ ・parameters.pyから環境変数を読み込み
+ ・sensing.pyをimport/初期化/環境変数を読み込み
+ ・emr_gen.pyをimport/初期化/環境変数を読み込み
+end note
+
+== 録画ループ ==
+
+emr_rec.main -> emr_rec.exec
+activate emr_rec.main
+deactivate emr_rec.main
+
+emr_rec.exec -> Cam:カメラデバイス初期化
+activate Cam
+activate emr_rec.exec
+emr_rec.exec <- Cam
+
+loop while True 
+    emr_rec.exec -> emr_rec.set_loop
+    deactivate emr_rec.exec
+    activate emr_rec.set_loop
+
+    loop loop_count < 5
+
+    alt emr_writer ==1: interval = 4
+    else : interval = 14
+    end
+
+    alt trigger_type == cam
+        emr_rec.set_loop -> emr_rec.video_writer_diff
+        activate emr_rec.video_writer_diff
+        loop timedelta <= interval
+            emr_rec.video_writer_diff -> Cam
+            emr_rec.video_writer_diff <- Cam
+            alt 二値化差分 > 閾値: emr_trigger = 1
+            else emr_trigger = 0
+            end
+        end
+        emr_rec.set_loop <- emr_rec.video_writer_diff: emr_writer
+        deactivate emr_rec.video_writer_diff
+
+    else trigger_type == sensor
+        emr_rec.set_loop -> emr_rec.video_writer_sensor
+        activate emr_rec.video_writer_sensor
+        loop timedelta <= interval
+            emr_rec.video_writer_sensor -> Cam
+            emr_rec.video_writer_sensor <- Cam
+            emr_rec.video_writer_sensor -> sensing.detect_counter
+            activate sensing.detect_counter
+            sensing.detect_counter -> Sensor
+            activate Sensor
+            sensing.detect_counter <- Sensor
+            deactivate Sensor
+            emr_rec.video_writer_sensor <- sensing.detect_counter: tr_signal
+            deactivate sensing.detect_counter
+            alt センサーで物体検知: emr_trigger = 1
+            else emr_trigger = 0
+            end
+        end
+        emr_rec.set_loop <- emr_rec.video_writer_sensor: emr_writer
+        deactivate emr_rec.video_writer_sensor
+    
+    alt emr_writer ==1
+        emr_rec.set_loop -> emr_gen.combine_file
+        activate emr_gen.combine_file
+        emr_gen.combine_file -> emr_gen.chenge_codec
+        activate emr_gen.chenge_codec
+        emr_gen.combine_file <- emr_gen.chenge_codec
+        deactivate emr_gen.chenge_codec
+        emr_gen.combine_file -> emr_gen.upload_awsS3
+        activate emr_gen.upload_awsS3
+        emr_gen.upload_awsS3 -> S3
+        activate S3
+        emr_gen.upload_awsS3 <- S3
+        deactivate S3
+        emr_gen.combine_file <- emr_gen.upload_awsS3
+        deactivate emr_gen.upload_awsS3
+        emr_rec.set_loop <- emr_gen.combine_file
+        deactivate emr_gen.combine_file
+    end
+    Cam --> emr_rec.set_loop: cap.release()
+    deactivate Cam
+    emr_rec.exec <- emr_rec.set_loop
+    deactivate emr_rec.set_loop
+    activate emr_rec.exec
+    end
+    end
+end
+    deactivate emr_rec.exec
+
+emr_rec.main <- emr_rec.exec
+activate emr_rec.main
+deactivate emr_rec.main
+
+@enduml
