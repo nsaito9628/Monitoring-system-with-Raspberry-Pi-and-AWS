@@ -15,11 +15,21 @@ aws iot create-thing --thing-name ${THING_NAME} | tee create-thing.json
 # create and download the keys and device certificate
 aws iot create-keys-and-certificate --certificate-pem-outfile ${THING_NAME}-certificate.pem.crt --public-key-outfile ${THING_NAME}-public.pem.key --private-key-outfile ${THING_NAME}-private.pem.key --set-as-active | tee create-keys-and-certificate.json
 
+# attach the certificate to the thing
+CERT_ARN=$(jq -r '.certificateArn' < create-keys-and-certificate.json)
+aws iot attach-thing-principal --thing-name ${THING_NAME} --principal ${CERT_ARN}
+
+# create the policy
 policy_stm="\"Statement\": [
       {
         \"Effect\": \"Allow\",
         \"Action\": \"iot:Connect\",
-        \"Resource\": \"arn:aws:iot:ap-northeast-1:${AccountId}:client/\${iot:Connection.Thing.ThingName}\"
+        \"Resource\": \"arn:aws:iot:ap-northeast-1:${AccountId}:client/\${iot:Connection.Thing.ThingName}\",
+        \"Condition\": {
+          \"Bool\": {
+            \"iot:Connection.Thing.IsAttached\": \"true\"
+          }
+        }
       },
       {
         \"Effect\": \"Allow\",
@@ -34,11 +44,7 @@ policy_stm="\"Statement\": [
     ]"
 
 aws iot create-policy --policy-name "${THING_NAME}_subscribe" --policy-document "{\"Version\": \"2012-10-17\",${policy_stm}}"
- 
-# attach the certificate to the thing
-CERT_ARN=$(jq -r '.certificateArn' < create-keys-and-certificate.json)
-aws iot attach-thing-principal --thing-name ${THING_NAME} --principal ${CERT_ARN}
- 
+
 # attach policy to the certificate
 aws iot attach-policy --policy-name ${THING_NAME}_subscribe --target ${CERT_ARN}
  
